@@ -1,0 +1,119 @@
+# Gmail Classifier 設定ファイル
+
+# 分類器の種類: rule_based / llm
+classifier: rule_based
+
+# 新着メール監視の間隔（秒）
+watch_interval: 300
+
+# LLM設定（将来用）
+llm:
+  endpoint: "http://localhost:11434/api/generate"
+  model: "llama3"
+
+# 分類ルール
+categories:
+  Shopping:
+    display_name: "ショッピング/注文"
+    domains:
+      - amazon.co.jp
+      - amazon.com
+      - rakuten.co.jp
+      - yahoo.co.jp
+      - mercari.jp
+      - zozo.jp
+      - yodobashi.com
+      - biccamera.com
+    keywords_subject: []
+    keywords_body: []
+
+  Social:
+    display_name: "SNS/ソーシャル"
+    domains:
+      - twitter.com
+      - x.com
+      - facebook.com
+      - instagram.com
+      - linkedin.com
+      - discord.com
+      - line.me
+    keywords_subject: []
+    keywords_body: []
+
+  Newsletter:
+    display_name: "ニュースレター"
+    domains:
+      - substack.com
+      - medium.com
+    keywords_subject:
+      - ニュース
+      - newsletter
+      - ニュースレター
+      - 週刊
+      - 月刊
+      - digest
+    keywords_body: []
+
+  Finance:
+    display_name: "金融/決済"
+    domains:
+      - smbc.co.jp
+      - mufg.jp
+      - mizuhobank.co.jp
+      - rakuten-bank.co.jp
+      - paypay.ne.jp
+      - sbigroup.co.jp
+      - moneyforward.com
+      - rakuten-sec.co.jp
+      - sbisec.co.jp
+    keywords_subject:
+      - 口座
+      - 振込
+      - 決済
+      - 引落
+      - 明細
+    keywords_body: []
+
+  Notification:
+    display_name: "サービス通知"
+    domains:
+      - github.com
+      - google.com
+      - apple.com
+      - microsoft.com
+      - slack.com
+      - notion.so
+      - atlassian.com
+    keywords_subject: []
+    keywords_body: []
+
+  Promotion:
+    display_name: "広告/プロモーション"
+    domains: []
+    keywords_subject:
+      - セール
+      - "OFF"
+      - キャンペーン
+      - クーポン
+      - 限定
+      - お得
+    keywords_body:
+      - unsubscribe
+      - 配信停止
+      - メール配信の停止
+      - opt-out
+
+  Work:
+    display_name: "仕事/ビジネス"
+    domains: []
+    # ここにご自身の仕事関連ドメインを追加してください
+    # 例: - example.co.jp
+    keywords_subject: []
+    keywords_body: []
+
+  Personal:
+    display_name: "個人/その他"
+    # デフォルトカテゴリ（他にマッチしないメール）
+    domains: []
+    keywords_subject: []
+    keywords_body: []
