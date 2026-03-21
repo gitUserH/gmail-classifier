@@ -49,7 +49,8 @@ def classify_messages(
         category = classifier.classify(email)
         stats[category] = stats.get(category, 0) + 1
 
-        print(f"  [{category:12s}] {email.subject[:60]}")
+        subject_safe = email.subject[:60].encode("cp932", errors="replace").decode("cp932")
+        print(f"  [{category:12s}] {subject_safe}")
 
         if not dry_run:
             if category not in label_id_cache:
