@@ -1,7 +1,7 @@
 # Gmail Classifier 設定ファイル
 
 # 分類器の種類: rule_based / llm
-classifier: rule_based
+classifier: llm
 
 # 新着メール監視の間隔（秒）
 watch_interval: 300
@@ -9,7 +9,7 @@ watch_interval: 300
 # LLM設定（将来用）
 llm:
   endpoint: "http://localhost:11434/api/generate"
-  model: "llama3"
+  model: "gemma2"
 
 # 分類ルール
 categories:
