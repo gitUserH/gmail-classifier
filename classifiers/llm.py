@@ -1,5 +1,6 @@
-"""LLM分類器（将来用スケルトン）"""
+"""LLM分類器（サービス名抽出方式）"""
 
+import re
 import requests
 from classifiers.base import BaseClassifier
 from gmail_client import Email
@@ -10,10 +11,9 @@ class LLMClassifier(BaseClassifier):
         self.categories = categories
         self.endpoint = endpoint
         self.model = model
-        self._category_names = [name for name in categories if name != "Personal"]
 
     def classify(self, email: Email) -> str:
-        """Ollama APIを使ってメールを分類する。"""
+        """Ollama APIを使って送信元のサービス名/ブランド名を抽出する。"""
         prompt = self._build_prompt(email)
 
         resp = requests.post(
@@ -28,20 +28,25 @@ class LLMClassifier(BaseClassifier):
         resp.raise_for_status()
         answer = resp.json().get("response", "").strip()
 
-        # レスポンスからカテゴリ名を抽出
-        for name in self._category_names:
-            if name.lower() in answer.lower():
-                return name
-        return "Personal"
+        # 最初の1行だけ取得し、余計な記号を除去
+        label = answer.split("\n")[0].strip()
+        label = re.sub(r"[\"'`\.\,\!]", "", label).strip()
+
+        # 長すぎる回答はLLMが説明文を返したケースなのでOther扱い
+        if not label or len(label) > 20:
+            return "Other"
+        return label
 
     def _build_prompt(self, email: Email) -> str:
-        categories_str = ", ".join(self._category_names)
         return (
-            f"以下のメールを次のカテゴリのいずれかに分類してください: {categories_str}\n"
-            f"該当しない場合は Personal と回答してください。\n"
-            f"カテゴリ名のみを回答してください。\n\n"
+            "以下のメールの送信元のサービス名またはブランド名を短く抽出してください。\n"
+            "ルール:\n"
+            "- 正式なサービス名やブランド名を短く返してください（例: 楽天証券, JCB, Ponta, Amazon）\n"
+            "- 余計な説明は不要です。名前だけを1つ返してください。\n"
+            "- 判別できない場合は「Other」と返してください。\n"
+            "- 必ず20文字以内で回答してください。\n\n"
             f"From: {email.from_address}\n"
             f"Subject: {email.subject}\n"
-            f"Body: {email.snippet}\n\n"
-            f"カテゴリ:"
+            f"Snippet: {email.snippet}\n\n"
+            "サービス名:"
         )
