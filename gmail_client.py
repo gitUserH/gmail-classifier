@@ -91,8 +91,10 @@ class GmailClient:
     def ensure_label(self, label_name: str) -> str:
         """ラベルが存在しなければ作成し、ラベルIDを返す。"""
         labels = self.get_labels()
-        if label_name in labels:
-            return labels[label_name]
+        # 大文字小文字を無視して既存ラベルを検索
+        for existing_name, label_id in labels.items():
+            if existing_name.lower() == label_name.lower():
+                return label_id
 
         body = {
             "name": label_name,
