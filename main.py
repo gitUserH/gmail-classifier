@@ -40,12 +40,23 @@ def classify_messages(
     classifier: BaseClassifier,
     messages: list[Email],
     dry_run: bool = False,
+    spam_senders: set[str] | None = None,
 ) -> dict[str, int]:
     """メールを分類してラベルを付与する。分類結果の集計を返す。"""
     stats: dict[str, int] = {}
     label_id_cache: dict[str, str] = {}
 
     for email in messages:
+        # 迷惑メール送信者チェック
+        if spam_senders and email.from_address.lower() in spam_senders:
+            category = "[SPAM]"
+            stats[category] = stats.get(category, 0) + 1
+            subject_safe = email.subject[:60].encode("cp932", errors="replace").decode("cp932")
+            print(f"  [{category:12s}] {subject_safe}")
+            if not dry_run:
+                client.move_to_spam(email.id)
+            continue
+
         category = classifier.classify(email)
         stats[category] = stats.get(category, 0) + 1
 
@@ -67,6 +78,10 @@ def cmd_classify(args: argparse.Namespace) -> None:
     client = GmailClient(creds)
     classifier = create_classifier(config)
 
+    print("迷惑メール送信者リストを取得中...")
+    spam_senders = client.fetch_spam_senders()
+    print(f"  {len(spam_senders)} 件のスパム送信者を検出\n")
+
     print(f"メールを取得中... (最大 {args.limit} 件)")
     messages = client.fetch_messages(max_results=args.limit)
     print(f"{len(messages)} 件のメールを取得しました。\n")
@@ -80,7 +95,7 @@ def cmd_classify(args: argparse.Namespace) -> None:
     else:
         print("=== メール分類中 ===\n")
 
-    stats = classify_messages(client, classifier, messages, dry_run=args.dry_run)
+    stats = classify_messages(client, classifier, messages, dry_run=args.dry_run, spam_senders=spam_senders)
 
     print(f"\n--- 分類結果 ---")
     for category, count in sorted(stats.items(), key=lambda x: -x[1]):
@@ -99,6 +114,10 @@ def cmd_watch(args: argparse.Namespace) -> None:
     client = GmailClient(creds)
     classifier = create_classifier(config)
 
+    print("迷惑メール送信者リストを取得中...")
+    spam_senders = client.fetch_spam_senders()
+    print(f"  {len(spam_senders)} 件のスパム送信者を検出\n")
+
     print(f"新着メール監視を開始します（間隔: {interval}秒）")
     print("Ctrl+C で停止\n")
 
@@ -113,9 +132,9 @@ def cmd_watch(args: argparse.Namespace) -> None:
             if messages:
                 print(f"  {len(messages)} 件の新着メール:")
                 if args.dry_run:
-                    classify_messages(client, classifier, messages, dry_run=True)
+                    classify_messages(client, classifier, messages, dry_run=True, spam_senders=spam_senders)
                 else:
-                    classify_messages(client, classifier, messages, dry_run=False)
+                    classify_messages(client, classifier, messages, dry_run=False, spam_senders=spam_senders)
             else:
                 print("  新着メールなし")
 

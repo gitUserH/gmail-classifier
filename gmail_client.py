@@ -113,3 +113,45 @@ class GmailClient:
             id=msg_id,
             body={"addLabelIds": [label_id]},
         ).execute()
+
+    def fetch_spam_senders(self, max_results: int = 500) -> set[str]:
+        """迷惑メールフォルダの送信者アドレス一覧を取得する。"""
+        senders: set[str] = set()
+        page_token = None
+
+        while len(senders) < max_results:
+            batch_size = min(max_results - len(senders), 100)
+            result = (
+                self.service.users()
+                .messages()
+                .list(
+                    userId="me",
+                    labelIds=["SPAM"],
+                    maxResults=batch_size,
+                    pageToken=page_token,
+                )
+                .execute()
+            )
+
+            msg_refs = result.get("messages", [])
+            if not msg_refs:
+                break
+
+            for ref in msg_refs:
+                email = self._get_message_detail(ref["id"])
+                if email:
+                    senders.add(email.from_address.lower())
+
+            page_token = result.get("nextPageToken")
+            if not page_token:
+                break
+
+        return senders
+
+    def move_to_spam(self, msg_id: str) -> None:
+        """メールを迷惑メールフォルダに移動する。"""
+        self.service.users().messages().modify(
+            userId="me",
+            id=msg_id,
+            body={"addLabelIds": ["SPAM"], "removeLabelIds": ["INBOX"]},
+        ).execute()
