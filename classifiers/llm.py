@@ -37,6 +37,24 @@ class LLMClassifier(BaseClassifier):
             return "Other"
         return label
 
+    def is_spam(self, email: Email) -> bool:
+        """LLMでメールの内容を分析し、迷惑メールかどうか判定する。"""
+        prompt = self._build_spam_prompt(email)
+
+        resp = requests.post(
+            self.endpoint,
+            json={
+                "model": self.model,
+                "prompt": prompt,
+                "stream": False,
+            },
+            timeout=30,
+        )
+        resp.raise_for_status()
+        answer = resp.json().get("response", "").strip().lower()
+
+        return answer.startswith("yes")
+
     def _build_prompt(self, email: Email) -> str:
         return (
             "以下のメールの送信元のサービス名またはブランド名を短く抽出してください。\n"
@@ -49,4 +67,26 @@ class LLMClassifier(BaseClassifier):
             f"Subject: {email.subject}\n"
             f"Snippet: {email.snippet}\n\n"
             "サービス名:"
+        )
+
+    def _build_spam_prompt(self, email: Email) -> str:
+        return (
+            "以下のメールが明らかな迷惑メール（スパム）かどうか判定してください。\n"
+            "迷惑メールと判定するのは以下のケースのみです:\n"
+            "- 身に覚えのない当選通知、高額報酬・副業の案内\n"
+            "- フィッシング詐欺（偽のログインページへの誘導など）\n"
+            "- 架空請求、脅迫的な内容\n"
+            "- 出会い系、アダルト関連の勧誘\n"
+            "- 不自然な日本語、明らかな機械翻訳による詐欺メール\n\n"
+            "以下は迷惑メールではありません（NOと判定してください）:\n"
+            "- 企業やサービスからの正規のメルマガ、セール案内、キャンペーン通知\n"
+            "- 予約確認、注文確認、配送通知など自分が利用したサービスからの通知\n"
+            "- 病院、クリニック、行政機関からの連絡\n"
+            "- 求人情報、ニュースレター\n"
+            "- 迷うならNOと判定してください\n\n"
+            f"From: {email.from_address}\n"
+            f"Subject: {email.subject}\n"
+            f"Body: {email.snippet}\n\n"
+            "迷惑メールですか？ YES または NO のみで回答してください。\n"
+            "回答:"
         )
