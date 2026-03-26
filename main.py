@@ -35,20 +35,12 @@ def create_classifier(config: dict) -> BaseClassifier:
     return RuleBasedClassifier(categories=categories)
 
 
-def _extract_domain(address: str) -> str:
-    """メールアドレスからドメインを抽出する。"""
-    if "@" in address:
-        return address.split("@", 1)[1].lower()
-    return address.lower()
-
-
 def classify_messages(
     client: GmailClient,
     classifier: BaseClassifier,
     messages: list[Email],
     dry_run: bool = False,
     spam_senders: set[str] | None = None,
-    spam_domains: set[str] | None = None,
 ) -> dict[str, int]:
     """メールを分類してラベルを付与する。分類結果の集計を返す。"""
     stats: dict[str, int] = {}
@@ -58,25 +50,18 @@ def classify_messages(
     for email in messages:
         subject_safe = email.subject[:60].encode("cp932", errors="replace").decode("cp932")
 
-        # 1. 迷惑メール送信者の完全一致チェック
+        # 1. 迷惑メール送信者の完全一致 + LLM内容確認
         if spam_senders and email.from_address.lower() in spam_senders:
-            category = "[SPAM:送信者]"
-            stats[category] = stats.get(category, 0) + 1
-            print(f"  [{category:12s}] {subject_safe}")
-            if not dry_run:
-                client.move_to_spam(email.id)
-            continue
+            # LLMでも内容を確認し、正規メールなら通常分類に回す
+            if not has_spam_check or classifier.is_spam(email):
+                category = "[SPAM:送信者]"
+                stats[category] = stats.get(category, 0) + 1
+                print(f"  [{category:12s}] {subject_safe}")
+                if not dry_run:
+                    client.move_to_spam(email.id)
+                continue
 
-        # 2. 迷惑メール送信者のドメイン一致チェック
-        if spam_domains and _extract_domain(email.from_address) in spam_domains:
-            category = "[SPAM:ドメイン]"
-            stats[category] = stats.get(category, 0) + 1
-            print(f"  [{category:12s}] {subject_safe}")
-            if not dry_run:
-                client.move_to_spam(email.id)
-            continue
-
-        # 3. LLMによる内容ベースのスパム判定
+        # 2. LLMによる内容ベースのスパム判定
         if has_spam_check and classifier.is_spam(email):
             category = "[SPAM:内容]"
             stats[category] = stats.get(category, 0) + 1
@@ -85,7 +70,7 @@ def classify_messages(
                 client.move_to_spam(email.id)
             continue
 
-        # 4. 通常のサービス名分類
+        # 3. 通常のサービス名分類
         category = classifier.classify(email)
         stats[category] = stats.get(category, 0) + 1
         print(f"  [{category:12s}] {subject_safe}")
@@ -107,8 +92,7 @@ def cmd_classify(args: argparse.Namespace) -> None:
 
     print("迷惑メール送信者リストを取得中...")
     spam_senders = client.fetch_spam_senders()
-    spam_domains = {_extract_domain(addr) for addr in spam_senders}
-    print(f"  {len(spam_senders)} 件のスパム送信者 / {len(spam_domains)} ドメインを検出\n")
+    print(f"  {len(spam_senders)} 件のスパム送信者を検出\n")
 
     print(f"メールを取得中... (最大 {args.limit} 件)")
     messages = client.fetch_messages(max_results=args.limit)
@@ -123,7 +107,7 @@ def cmd_classify(args: argparse.Namespace) -> None:
     else:
         print("=== メール分類中 ===\n")
 
-    stats = classify_messages(client, classifier, messages, dry_run=args.dry_run, spam_senders=spam_senders, spam_domains=spam_domains)
+    stats = classify_messages(client, classifier, messages, dry_run=args.dry_run, spam_senders=spam_senders)
 
     print(f"\n--- 分類結果 ---")
     for category, count in sorted(stats.items(), key=lambda x: -x[1]):
@@ -144,8 +128,7 @@ def cmd_watch(args: argparse.Namespace) -> None:
 
     print("迷惑メール送信者リストを取得中...")
     spam_senders = client.fetch_spam_senders()
-    spam_domains = {_extract_domain(addr) for addr in spam_senders}
-    print(f"  {len(spam_senders)} 件のスパム送信者 / {len(spam_domains)} ドメインを検出\n")
+    print(f"  {len(spam_senders)} 件のスパム送信者を検出\n")
 
     print(f"新着メール監視を開始します（間隔: {interval}秒）")
     print("Ctrl+C で停止\n")
@@ -161,9 +144,9 @@ def cmd_watch(args: argparse.Namespace) -> None:
             if messages:
                 print(f"  {len(messages)} 件の新着メール:")
                 if args.dry_run:
-                    classify_messages(client, classifier, messages, dry_run=True, spam_senders=spam_senders, spam_domains=spam_domains)
+                    classify_messages(client, classifier, messages, dry_run=True, spam_senders=spam_senders)
                 else:
-                    classify_messages(client, classifier, messages, dry_run=False, spam_senders=spam_senders, spam_domains=spam_domains)
+                    classify_messages(client, classifier, messages, dry_run=False, spam_senders=spam_senders)
             else:
                 print("  新着メールなし")
 

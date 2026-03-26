@@ -23,37 +23,41 @@ class LLMClassifier(BaseClassifier):
                 "prompt": prompt,
                 "stream": False,
             },
-            timeout=30,
+            timeout=60,
         )
         resp.raise_for_status()
         answer = resp.json().get("response", "").strip()
 
-        # 最初の1行だけ取得し、余計な記号を除去
+        # 最初の1行だけ取得し、余計な記号・スペースを正規化
         label = answer.split("\n")[0].strip()
         label = re.sub(r"[\"'`\.\,\!]", "", label).strip()
+        label = re.sub(r"\s+", " ", label).strip()
 
         # 長すぎる回答はLLMが説明文を返したケースなのでOther扱い
         if not label or len(label) > 20:
             return "Other"
-        return label
+        # 先頭大文字に統一（note → Note, amazon → Amazon）
+        return label[0].upper() + label[1:] if label[0].isascii() else label
 
     def is_spam(self, email: Email) -> bool:
         """LLMでメールの内容を分析し、迷惑メールかどうか判定する。"""
         prompt = self._build_spam_prompt(email)
 
-        resp = requests.post(
-            self.endpoint,
-            json={
-                "model": self.model,
-                "prompt": prompt,
-                "stream": False,
-            },
-            timeout=30,
-        )
-        resp.raise_for_status()
-        answer = resp.json().get("response", "").strip().lower()
-
-        return answer.startswith("yes")
+        try:
+            resp = requests.post(
+                self.endpoint,
+                json={
+                    "model": self.model,
+                    "prompt": prompt,
+                    "stream": False,
+                },
+                timeout=60,
+            )
+            resp.raise_for_status()
+            answer = resp.json().get("response", "").strip().lower()
+            return answer.startswith("yes")
+        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError):
+            return False
 
     def _build_prompt(self, email: Email) -> str:
         return (
