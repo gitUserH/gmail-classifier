@@ -11,11 +11,12 @@ class LLMClassifier(BaseClassifier):
         self.categories = categories
         self.endpoint = endpoint
         self.model = model
+        self.total_prompt_tokens = 0
+        self.total_eval_tokens = 0
+        self.total_requests = 0
 
-    def classify(self, email: Email) -> str:
-        """Ollama APIを使って送信元のサービス名/ブランド名を抽出する。"""
-        prompt = self._build_prompt(email)
-
+    def _call_llm(self, prompt: str) -> dict:
+        """Ollama APIを呼び出し、レスポンス全体を返す。トークン数を集計する。"""
         resp = requests.post(
             self.endpoint,
             json={
@@ -26,7 +27,28 @@ class LLMClassifier(BaseClassifier):
             timeout=60,
         )
         resp.raise_for_status()
-        answer = resp.json().get("response", "").strip()
+        data = resp.json()
+
+        self.total_prompt_tokens += data.get("prompt_eval_count", 0)
+        self.total_eval_tokens += data.get("eval_count", 0)
+        self.total_requests += 1
+
+        return data
+
+    def get_token_stats(self) -> dict:
+        """累計トークン使用量を返す。"""
+        return {
+            "requests": self.total_requests,
+            "prompt_tokens": self.total_prompt_tokens,
+            "eval_tokens": self.total_eval_tokens,
+            "total_tokens": self.total_prompt_tokens + self.total_eval_tokens,
+        }
+
+    def classify(self, email: Email) -> str:
+        """Ollama APIを使って送信元のサービス名/ブランド名を抽出する。"""
+        prompt = self._build_prompt(email)
+        data = self._call_llm(prompt)
+        answer = data.get("response", "").strip()
 
         # 最初の1行だけ取得し、余計な記号・スペースを正規化
         label = answer.split("\n")[0].strip()
@@ -44,17 +66,8 @@ class LLMClassifier(BaseClassifier):
         prompt = self._build_spam_prompt(email)
 
         try:
-            resp = requests.post(
-                self.endpoint,
-                json={
-                    "model": self.model,
-                    "prompt": prompt,
-                    "stream": False,
-                },
-                timeout=60,
-            )
-            resp.raise_for_status()
-            answer = resp.json().get("response", "").strip().lower()
+            data = self._call_llm(prompt)
+            answer = data.get("response", "").strip().lower()
             return answer.startswith("yes")
         except (requests.exceptions.Timeout, requests.exceptions.ConnectionError):
             return False

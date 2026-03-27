@@ -117,6 +117,15 @@ def cmd_classify(args: argparse.Namespace) -> None:
     if args.dry_run:
         print("\n(ドライランのため、ラベルは付与されていません)")
 
+    # LLM使用時はトークン統計を表示
+    if hasattr(classifier, "get_token_stats"):
+        token_stats = classifier.get_token_stats()
+        print(f"\n--- LLMトークン使用量 ---")
+        print(f"  リクエスト数: {token_stats['requests']} 回")
+        print(f"  プロンプト: {token_stats['prompt_tokens']:,} トークン")
+        print(f"  生成: {token_stats['eval_tokens']:,} トークン")
+        print(f"  合計: {token_stats['total_tokens']:,} トークン")
+
 
 def cmd_watch(args: argparse.Namespace) -> None:
     """新着メールを定期チェックして分類する。"""
