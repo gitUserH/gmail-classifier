@@ -88,12 +88,19 @@ class GmailClient:
         self._label_cache = {label["name"]: label["id"] for label in labels}
         return self._label_cache
 
+    @staticmethod
+    def _normalize_label(name: str) -> str:
+        """ラベル名を正規化する（小文字化＋スペース統一）。"""
+        import re
+        return re.sub(r"\s+", " ", name).strip().lower()
+
     def ensure_label(self, label_name: str) -> str:
         """ラベルが存在しなければ作成し、ラベルIDを返す。"""
         labels = self.get_labels()
-        # 大文字小文字を無視して既存ラベルを検索
+        normalized = self._normalize_label(label_name)
+        # 大文字小文字・スペースの揺れを無視して既存ラベルを検索
         for existing_name, label_id in labels.items():
-            if existing_name.lower() == label_name.lower():
+            if self._normalize_label(existing_name) == normalized:
                 return label_id
 
         body = {
@@ -155,3 +162,45 @@ class GmailClient:
             id=msg_id,
             body={"addLabelIds": ["SPAM"], "removeLabelIds": ["INBOX"]},
         ).execute()
+
+    def move_to_inbox(self, msg_id: str) -> None:
+        """メールを受信トレイに戻す。"""
+        self.service.users().messages().modify(
+            userId="me",
+            id=msg_id,
+            body={"addLabelIds": ["INBOX"], "removeLabelIds": ["SPAM"]},
+        ).execute()
+
+    def fetch_spam_messages(self, max_results: int = 500) -> list["Email"]:
+        """迷惑メールフォルダのメール一覧を取得する。"""
+        messages = []
+        page_token = None
+
+        while len(messages) < max_results:
+            batch_size = min(max_results - len(messages), 100)
+            result = (
+                self.service.users()
+                .messages()
+                .list(
+                    userId="me",
+                    labelIds=["SPAM"],
+                    maxResults=batch_size,
+                    pageToken=page_token,
+                )
+                .execute()
+            )
+
+            msg_refs = result.get("messages", [])
+            if not msg_refs:
+                break
+
+            for ref in msg_refs:
+                email = self._get_message_detail(ref["id"])
+                if email:
+                    messages.append(email)
+
+            page_token = result.get("nextPageToken")
+            if not page_token:
+                break
+
+        return messages
